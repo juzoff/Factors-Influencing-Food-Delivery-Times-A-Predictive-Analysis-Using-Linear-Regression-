@@ -80,3 +80,12 @@ This project focuses on predicting food delivery times by analyzing various fact
 
 ![12](https://github.com/user-attachments/assets/fb20a327-46f7-4a24-8337-e151722558b8)
 
+
+### Section 9: Dashboard Development: Key Factors Influencing Food Delivery Times
+- Model-Driven Insights: The dashboard incorporated key attributes identified by the final linear regression model, such as courier experience, weather conditions, and traffic levels, as significant predictors of delivery times.
+- Feature Contributions: Highlighted how each attribute (e.g., distance, preparation time) contributed to variations in delivery time, aligning with the model's coefficients and feature importance scores.
+- Data-Driven Validation: Validated the linear model's outcomes by visualizing the influence of these attributes on delivery times, ensuring the model's accuracy and interpretability.
+- Actionable Trends: Offered actionable insights by linking the model's findings to operational factors like peak traffic times or preparation bottlenecks.
+- Enhanced Decision-Making: Enabled stakeholders to focus on the most impactful attributes, as identified by the model, to streamline and optimize delivery operations.
+
+![13](https://github.com/user-attachments/assets/0a3ca040-ec3e-4e56-a533-8cfbc0ab35f0)
