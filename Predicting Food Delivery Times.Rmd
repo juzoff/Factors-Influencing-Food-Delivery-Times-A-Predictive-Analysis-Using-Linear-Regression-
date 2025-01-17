@@ -1,0 +1,401 @@
+---
+title: "LR - Food Delivery Times"
+output: html_document
+date: "2025-01-08"
+---
+
+#Section 1: Data Import and Initial Exploration
+
+### Data Import
+```{r}
+fdt <- read.csv("C:/Users/jivko/Documents/Data Analytics, Big Data, and Predictive Analytics/Personal Project/Linear Regression - Food Delivery/Food_Delivery_Times.csv")
+
+# Print the first few rows
+head(fdt, 40)
+```
+
+```{r}
+str(fdt)
+```
+
+#Section 2: One-Hot Encoding of Categorical Features
+```{r}
+library(dplyr)
+library(caret)
+
+# Step 1: Convert categorical variables to factors
+fdt$Weather <- as.factor(fdt$Weather)
+fdt$Traffic_Level <- as.factor(fdt$Traffic_Level)
+fdt$Time_of_Day <- as.factor(fdt$Time_of_Day)
+fdt$Vehicle_Type <- as.factor(fdt$Vehicle_Type)
+
+# Step 2: Apply dummyVars to encode categorical variables
+dummy_vars <- dummyVars(~ Weather + Traffic_Level + Time_of_Day + Vehicle_Type, data = fdt)
+
+# Step 3: Generate the one-hot encoded data
+encoded_data <- predict(dummy_vars, newdata = fdt)
+
+# Convert it into a data frame
+fdt_encoded <- data.frame(encoded_data)
+
+# Step 4: Combine the original numeric columns with the encoded columns
+fdt_combined <- cbind(fdt[, c("Order_ID", "Distance_km", "Preparation_Time_min", "Courier_Experience_yrs", "Delivery_Time_min")], 
+                      fdt_encoded)
+
+# Step 5: Check the resulting data frame
+str(fdt_combined)
+
+# Optional: Remove original categorical columns if no longer needed
+fdt_final <- fdt_combined[, !(names(fdt_combined) %in% c("Weather.", "Traffic_Level.", "Time_of_Day.", "Vehicle_Type"))]
+```
+
+```{r}
+str(fdt_final)
+```
+
+#Section 3: Handling Missing Values and Empty Strings
+```{r}
+# Check missing values again
+colSums(is.na(fdt_final))
+```
+
+```{r}
+# Remove rows with missing values in Courier_Experience_yrs
+fdt_final2 <- fdt_final[!is.na(fdt$Courier_Experience_yrs), ]
+```
+
+```{r}
+# Count the total number of empty strings
+sum(fdt_final2 == "", na.rm = TRUE)
+```
+
+
+#Section 4: Developing the Initial Linear Model for Price Prediction with Feature Selection and Residual Analysis
+```{r}
+# Fit the linear model
+linearfdt <- lm(fdt_final2$Delivery_Time_min ~ ., data = fdt_final2)
+
+# Get the summary of the model
+summary(linearfdt)
+```
+
+```{r}
+# Get the residuals and fitted values
+residuals_fdt <- residuals(linearfdt)
+fitted_values_fdt <- fitted(linearfdt)
+
+# Create the residual plot
+plot(fitted_values_fdt, residuals_fdt,
+     main = "Residual Plot",
+     xlab = "Fitted Values",
+     ylab = "Residuals",
+     pch = 20, col = "blue")
+
+# Add a horizontal line at 0 to help visualize the residuals
+abline(h = 0, col = "red", lty = 2)
+```
+
+#Section 5: Checking for Multicollinearity
+
+```{r}
+alias(vif_model)
+```
+```{r}
+fdt_final3 <- fdt_final2[, !names(fdt_final2) %in% c("Vehicle_Type.Scooter")]
+```
+
+```{r}
+vif_model <- lm(Delivery_Time_min ~ Order_ID + Distance_km + Preparation_Time_min + 
+                  Courier_Experience_yrs + Weather.Clear + Weather.Foggy + 
+                  Weather.Rainy + Weather.Snowy + Weather.Windy + Traffic_Level.High + 
+                  Traffic_Level.Low + Traffic_Level.Medium + Time_of_Day.Afternoon + 
+                  Time_of_Day.Evening + Time_of_Day.Morning + Time_of_Day.Night + 
+                  Vehicle_Type.Bike + Vehicle_Type.Car, data = fdt_final3)
+```
+
+```{r}
+library(car)
+vif(vif_model)
+```
+
+#Section 6: Refining the Linear Model with Stepwise Regression and Multicollinearity Check
+```{r}
+# Fit the linear model
+linearfdt2 <- lm(fdt_final3$Delivery_Time_min ~ ., data = fdt_final3)
+
+# Get the summary of the model
+summary(linearfdt2)
+```
+
+###Stepwise Regression
+```{r}
+library(MASS)
+stepwise_model <- stepAIC(lm(fdt_final3$Delivery_Time_min ~ ., data = fdt_final3), direction = "both", trace = FALSE)
+summary(stepwise_model)
+```
+
+
+```{r}
+# Generate residuals from the stepwise model
+residuals <- residuals(stepwise_model)
+
+# Predicted values from the stepwise model
+predicted <- fitted(stepwise_model)
+
+# Residual Plot
+plot(predicted, residuals, 
+     xlab = "Fitted Values", 
+     ylab = "Residuals", 
+     main = "Residual Plot", 
+     pch = 20, col = "blue")
+abline(h = 0, col = "red", lwd = 2)
+```
+
+```{r}
+library(car)
+
+# Check VIF for the stepwise regression model
+vif_values <- vif(stepwise_model)
+
+# Print the VIF values
+print(vif_values)
+
+# Identify variables with high multicollinearity
+threshold <- 5 # Common threshold for VIF
+high_vif <- vif_values[vif_values > threshold]
+if(length(high_vif) > 0) {
+  print("Variables with high multicollinearity:")
+  print(high_vif)
+} else {
+  print("No variables with significant multicollinearity.")
+}
+```
+
+#Section 7: Outlier Removal and Final Linear Model with Residual Analysis
+```{r}
+# Fit the linear regression model
+model <- lm(Delivery_Time_min ~ Distance_km + Preparation_Time_min + Courier_Experience_yrs +
+              Weather.Clear + Weather.Foggy + Weather.Snowy + Weather.Windy +
+              Traffic_Level.High + Traffic_Level.Low + Time_of_Day.Afternoon +
+              Time_of_Day.Evening + Time_of_Day.Morning + Time_of_Day.Night, data = fdt_final3)
+
+# Calculate residuals
+residuals <- residuals(model)
+
+# Calculate the lower and upper quartiles (Q1 and Q3)
+Q1 <- quantile(residuals, 0.25)
+Q3 <- quantile(residuals, 0.75)
+
+# Calculate the IQR
+IQR <- Q3 - Q1
+
+# Define lower and upper thresholds for outliers
+lower_threshold <- Q1 - 1.5 * IQR
+upper_threshold <- Q3 + 1.5 * IQR
+
+# Identify outliers based on the thresholds
+outliers <- which(residuals < lower_threshold | residuals > upper_threshold)
+
+# Remove outliers from the dataset
+fdt_final3_no_outliers <- fdt_final3[-outliers, ]
+
+# Fit a new model without the outliers
+model_no_outliers <- lm(Delivery_Time_min ~ Distance_km + Preparation_Time_min + Courier_Experience_yrs +
+                          Weather.Clear + Weather.Foggy + Weather.Snowy + Weather.Windy +
+                          Traffic_Level.High + Traffic_Level.Low + Time_of_Day.Afternoon +
+                          Time_of_Day.Evening + Time_of_Day.Morning + Time_of_Day.Night, data = fdt_final3_no_outliers)
+
+# Summary of the new model
+summary(model_no_outliers)
+```
+
+
+```{r}
+# Extract predictor variables from the model formula
+predictors <- all.vars(formula(model_no_outliers))
+
+# Subset the original dataset to include only the predictors in the model
+fdt_final3_model_data <- fdt_final3[, c("Delivery_Time_min", predictors)]
+
+# View the new dataframe
+head(fdt_final3_model_data)
+```
+
+```{r}
+# Define the file path where you want to save the CSV
+file_path <- "C:/Users/jivko/Documents/Data Analytics, Big Data, and Predictive Analytics/Personal Project/Linear Regression - Food Delivery/fdt_final3_model_data.csv"
+
+# Save the dataframe to a CSV file
+write.csv(fdt_final3_model_data, file = file_path, row.names = FALSE)
+```
+
+```{r}
+# Calculate residuals from the model without outliers
+residuals_no_outliers <- residuals(model_no_outliers)
+
+# Predicted values from the model without outliers
+predicted_no_outliers <- fitted(model_no_outliers)
+
+# Residual Plot
+plot(predicted_no_outliers, residuals_no_outliers, 
+     xlab = "Fitted Values", 
+     ylab = "Residuals", 
+     main = "Residual Plot (After Removing Outliers)", 
+     pch = 20, col = "darkgreen")
+abline(h = 0, col = "red", lwd = 2)
+```
+
+#Section 8: Generating Predictions
+ 
+###Predictions 1
+```{r}
+# Make predictions using the model without outliers
+predictions <- predict(model_no_outliers, newdata = fdt_final3_no_outliers)
+
+# View the predictions
+head(predictions)
+```
+```{r}
+# Combine actual and predicted values into a data frame
+comparison <- data.frame(
+  Actual = fdt_final3_no_outliers$Delivery_Time_min,
+  Predicted = predictions
+)
+
+# View the first few rows of the comparison
+head(comparison)
+```
+
+
+###Predictions 2
+```{r}
+# Example new data for predictions
+new_data1 <- data.frame(
+  Distance_km = 5,
+  Preparation_Time_min = 20,
+  Courier_Experience_yrs = 3,
+  Weather.Clear = 1,
+  Weather.Foggy = 0,
+  Weather.Snowy = 0,
+  Weather.Windy = 0,
+  Traffic_Level.High = 0,
+  Traffic_Level.Low = 1,
+  Time_of_Day.Afternoon = 0,
+  Time_of_Day.Evening = 1,
+  Time_of_Day.Morning = 0,
+  Time_of_Day.Night = 0
+)
+
+new_data2 <- data.frame(
+  Distance_km = 15,
+  Preparation_Time_min = 45,
+  Courier_Experience_yrs = 8,
+  Weather.Clear = 0,
+  Weather.Foggy = 0,
+  Weather.Snowy = 1,
+  Weather.Windy = 0,
+  Traffic_Level.High = 1,
+  Traffic_Level.Low = 0,
+  Time_of_Day.Afternoon = 1,
+  Time_of_Day.Evening = 0,
+  Time_of_Day.Morning = 0,
+  Time_of_Day.Night = 0
+)
+
+new_data3 <- data.frame(
+  Distance_km = 8,
+  Preparation_Time_min = 25,
+  Courier_Experience_yrs = 6,
+  Weather.Clear = 1,
+  Weather.Foggy = 0,
+  Weather.Snowy = 0,
+  Weather.Windy = 1,
+  Traffic_Level.High = 0,
+  Traffic_Level.Low = 1,
+  Time_of_Day.Afternoon = 0,
+  Time_of_Day.Evening = 0,
+  Time_of_Day.Morning = 1,
+  Time_of_Day.Night = 0
+)
+
+new_data4 <- data.frame(
+  Distance_km = 12,
+  Preparation_Time_min = 35,
+  Courier_Experience_yrs = 4,
+  Weather.Clear = 0,
+  Weather.Foggy = 1,
+  Weather.Snowy = 0,
+  Weather.Windy = 0,
+  Traffic_Level.High = 1,
+  Traffic_Level.Low = 0,
+  Time_of_Day.Afternoon = 1,
+  Time_of_Day.Evening = 0,
+  Time_of_Day.Morning = 0,
+  Time_of_Day.Night = 0
+)
+
+new_data5 <- data.frame(
+  Distance_km = 20,
+  Preparation_Time_min = 50,
+  Courier_Experience_yrs = 10,
+  Weather.Clear = 1,
+  Weather.Foggy = 0,
+  Weather.Snowy = 0,
+  Weather.Windy = 0,
+  Traffic_Level.High = 0,
+  Traffic_Level.Low = 1,
+  Time_of_Day.Afternoon = 0,
+  Time_of_Day.Evening = 1,
+  Time_of_Day.Morning = 0,
+  Time_of_Day.Night = 0
+)
+```
+
+
+```{r}
+# Combine all data frames into one
+new_data <- rbind(new_data1, new_data2, new_data3, new_data4, new_data5)
+
+# View the combined data frame
+print(new_data)
+```
+
+
+
+```{r}
+prediction1 <- predict(model_no_outliers, newdata = new_data1)
+prediction2 <- predict(model_no_outliers, newdata = new_data2)
+prediction3 <- predict(model_no_outliers, newdata = new_data3)
+prediction4 <- predict(model_no_outliers, newdata = new_data4)
+prediction5 <- predict(model_no_outliers, newdata = new_data5)
+
+# View predictions
+prediction1
+prediction2
+prediction3
+prediction4
+prediction5
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
